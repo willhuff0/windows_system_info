@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
+import 'dart:isolate';
 import 'package:windows_system_info/models/all_info.dart';
 import 'package:windows_system_info/models/static_info.dart';
 import 'package:windows_system_info/models/disk_layout_info.dart';
@@ -15,20 +15,7 @@ import 'package:windows_system_info/models/systrem_bios_info.dart';
 import 'package:windows_system_info/src/general_helper.dart';
 
 /// windows system info enums
-enum WindowsSystemInfoFeat {
-  all,
-  username,
-  diskLayout,
-  gpu,
-  memory,
-  network,
-  baseboard,
-  chassis,
-  cpu,
-  system,
-  bios,
-  os
-}
+enum WindowsSystemInfoFeat { all, username, diskLayout, gpu, memory, network, baseboard, chassis, cpu, system, bios, os }
 
 class WindowsSystemInfo {
   static AllInfo? _windowsSystemAllInfo;
@@ -44,21 +31,17 @@ class WindowsSystemInfo {
       List<WindowsSystemInfoFeat> featureEnum = [];
       if (requiredValues.contains(WindowsSystemInfoFeat.all)) {
         featureEnum.addAll(WindowsSystemInfoFeat.values);
-      }else{
+      } else {
         featureEnum = requiredValues;
       }
-      Map<String, dynamic> deviceInfo = await compute(
-          _getValueFromPowerShell,
-          featureEnum);
+      Map<String, dynamic> deviceInfo = await Isolate.run(() => _getValueFromPowerShell(featureEnum));
       AllInfo wsAllInfo = AllInfo.fromJson(deviceInfo);
       _windowsSystemAllInfo = wsAllInfo;
       _staticSystemInfo = DeviceStaticinfo.fromAllInfo(wsAllInfo);
-      _systemUserName = deviceInfo['userName']??'';
+      _systemUserName = deviceInfo['userName'] ?? '';
       _isInitlizPending = false;
     } else {
-      _isInitlizPending
-          ? throw ErrorHint('windows info: Concurrent init calls')
-          : throw UnsupportedError('Not windows');
+      _isInitlizPending ? null : throw UnsupportedError('Not windows');
     }
   }
 
@@ -90,15 +73,12 @@ class WindowsSystemInfo {
 
   ///will return true if 64 based os installed
   static bool get is64bit {
-    return _windowsSystemAllInfo != null &&
-        _windowsSystemAllInfo!.os.arch.toString().contains('64');
+    return _windowsSystemAllInfo != null && _windowsSystemAllInfo!.os.arch.toString().contains('64');
   }
 
   /// will return true if 32 based os installed
   static bool get is32bit {
-    return (_windowsSystemAllInfo != null &&
-        (_windowsSystemAllInfo!.os.arch.contains('32') ||
-            _windowsSystemAllInfo!.os.arch.contains('86')));
+    return (_windowsSystemAllInfo != null && (_windowsSystemAllInfo!.os.arch.contains('32') || _windowsSystemAllInfo!.os.arch.contains('86')));
   }
 
   ///will return true if inilising in progress else false
@@ -109,9 +89,7 @@ class WindowsSystemInfo {
   ///will return true if data intilised, wait to complete last init
   static Future<bool> get isInitilized async {
     await GeneralHelper.waitWhile(() => _isInitlizPending);
-    return _isInitlizPending == false &&
-        _windowsSystemAllInfo != null &&
-        _staticSystemInfo != null;
+    return _isInitlizPending == false && _windowsSystemAllInfo != null && _staticSystemInfo != null;
   }
 
   ///will return all disks attached to device,
@@ -172,14 +150,12 @@ class WindowsSystemInfo {
     return _windowsSystemAllInfo?.bios;
   }
 
-  static Map<String, dynamic> _getValueFromPowerShell(
-      List<WindowsSystemInfoFeat> requiredValues) {
+  static Map<String, dynamic> _getValueFromPowerShell(List<WindowsSystemInfoFeat> requiredValues) {
     Map<String, dynamic> deviceInfo = {};
 
     ///username
     if (requiredValues.contains(WindowsSystemInfoFeat.username)) {
-      deviceInfo['userName'] =
-          GeneralHelper.powerShell('\$env:USERPROFILE').split('\\').last;
+      deviceInfo['userName'] = GeneralHelper.powerShell('\$env:USERPROFILE').split('\\').last;
     }
     //CMD: echo %USERPROFILE%
 
@@ -193,19 +169,13 @@ class WindowsSystemInfo {
       ///virtual
       ///virtualHost
       deviceInfo['system'] = GeneralHelper.formatSystemInfo(
-        GeneralHelper.getValueAsMap(
-            data: GeneralHelper.powerShell(
-                'Get-WmiObject Win32_ComputerSystemProduct | select Name,Vendor,Version,IdentifyingNumber,UUID | fl'),
-            seprator: ':'),
+        GeneralHelper.getValueAsMap(data: GeneralHelper.powerShell('Get-WmiObject Win32_ComputerSystemProduct | select Name,Vendor,Version,IdentifyingNumber,UUID | fl'), seprator: ':'),
       );
       //CMD: WMIC /namespace:\\root\cimv2 path Win32_ComputerSystemProduct GET Name,Vendor,Version,IdentifyingNumber,UUID /format:list
 
       ///system related information
       ///systemsku
-      deviceInfo['systemSKU'] = GeneralHelper.getValueAsMap(
-          data: GeneralHelper.powerShell(
-              'Get-WmiObject MS_Systeminformation -Namespace "root/wmi" | select systemsku | fl'),
-          seprator: ':');
+      deviceInfo['systemSKU'] = GeneralHelper.getValueAsMap(data: GeneralHelper.powerShell('Get-WmiObject MS_Systeminformation -Namespace "root/wmi" | select systemsku | fl'), seprator: ':');
       //CMD: WMIC /namespace:\\root\wmi path MS_Systeminformation GET systemsku /format:list
     }
 
@@ -217,10 +187,7 @@ class WindowsSystemInfo {
       ///ReleaseDate
       ///BuildNumber
       ///SerialNumber
-      deviceInfo['bios'] = GeneralHelper.getValueAsMap(
-          data: GeneralHelper.powerShell(
-              'Get-WmiObject Win32_bios | select Description,Version,Manufacturer,ReleaseDate,BuildNumber,SerialNumber | fl'),
-          seprator: ':');
+      deviceInfo['bios'] = GeneralHelper.getValueAsMap(data: GeneralHelper.powerShell('Get-WmiObject Win32_bios | select Description,Version,Manufacturer,ReleaseDate,BuildNumber,SerialNumber | fl'), seprator: ':');
       //CMD: WMIC /namespace:\\root\cimv2 path Win32_bios GET Description,Version,Manufacturer,ReleaseDate,BuildNumber,SerialNumber /format:list
     }
     if (requiredValues.contains(WindowsSystemInfoFeat.baseboard)) {
@@ -229,10 +196,7 @@ class WindowsSystemInfo {
       ///Model
       ///SerialNumber
       ///Version
-      deviceInfo['baseboard'] = GeneralHelper.getValueAsMap(
-          data: GeneralHelper.powerShell(
-              'Get-WmiObject Win32_BaseBoard | select Manufacturer,Model,SerialNumber,Version | fl'),
-          seprator: ':');
+      deviceInfo['baseboard'] = GeneralHelper.getValueAsMap(data: GeneralHelper.powerShell('Get-WmiObject Win32_BaseBoard | select Manufacturer,Model,SerialNumber,Version | fl'), seprator: ':');
       // CMD: WMIC /namespace:\\root\cimv2 path Win32_BaseBoard GET Manufacturer,Model,SerialNumber,Version /format:list
     }
 
@@ -247,8 +211,7 @@ class WindowsSystemInfo {
       ///SKU
       deviceInfo['chassis'] = GeneralHelper.formatChassis(
         GeneralHelper.getValueAsMap(
-          data: GeneralHelper.powerShell(
-              'Get-WmiObject Win32_SystemEnclosure | select Model,Manufacturer,ChassisTypes,Version,SerialNumber,PartNumber,SKU | fl'),
+          data: GeneralHelper.powerShell('Get-WmiObject Win32_SystemEnclosure | select Model,Manufacturer,ChassisTypes,Version,SerialNumber,PartNumber,SKU | fl'),
           seprator: ':',
         ),
       );
@@ -263,8 +226,7 @@ class WindowsSystemInfo {
       ///OSArchitecture
       ///SerialNumber
       deviceInfo['os'] = GeneralHelper.getValueAsMap(
-        data: GeneralHelper.powerShell(
-            'Get-WmiObject Win32_OperatingSystem | select BuildNumber,Caption,CSName,OSArchitecture,SerialNumber | fl'),
+        data: GeneralHelper.powerShell('Get-WmiObject Win32_OperatingSystem | select BuildNumber,Caption,CSName,OSArchitecture,SerialNumber | fl'),
         seprator: ':',
       );
       //CMD: WMIC /namespace:\\root\cimv2 path Win32_OperatingSystem GET BuildNumber,Caption,CSName,OSArchitecture,SerialNumber /format:list
@@ -286,8 +248,7 @@ class WindowsSystemInfo {
       ///Model
       ///Stepping
       deviceInfo['cpu'] = GeneralHelper.getValueAsMap(
-        data: GeneralHelper.powerShell(
-            'Get-WmiObject Win32_Processor | select Description,Manufacturer,MaxClockSpeed,Name,NumberOfCores,SocketDesignation,NumberOfLogicalProcessors,L2CacheSize,L3CacheSize,Revision | fl'),
+        data: GeneralHelper.powerShell('Get-WmiObject Win32_Processor | select Description,Manufacturer,MaxClockSpeed,Name,NumberOfCores,SocketDesignation,NumberOfLogicalProcessors,L2CacheSize,L3CacheSize,Revision | fl'),
         seprator: ':',
       );
       //CMD: WMIC /namespace:\\root\cimv2 path Win32_Processor GET Description,Manufacturer,MaxClockSpeed,Name,NumberOfCores,SocketDesignation,NumberOfLogicalProcessors,L2CacheSize,L3CacheSize,Revision /format:list
@@ -303,8 +264,7 @@ class WindowsSystemInfo {
       ///type
       deviceInfo['net'] = GeneralHelper.formatNetworkDetailsdata(
         GeneralHelper.getValueAsMap(
-          data: GeneralHelper.powerShell(
-              'Get-WmiObject Win32_NetworkAdapter | select Name,Manufacturer,MACAddress,PhysicalAdapter,NetConnectionID | fl'),
+          data: GeneralHelper.powerShell('Get-WmiObject Win32_NetworkAdapter | select Name,Manufacturer,MACAddress,PhysicalAdapter,NetConnectionID | fl'),
           seprator: ':',
           isList: true,
         ),
@@ -336,14 +296,12 @@ class WindowsSystemInfo {
       ///Size
       deviceInfo['disklayout'] = GeneralHelper.formatDiskLayout(
         GeneralHelper.getValueAsMap(
-          data: GeneralHelper.powerShell(
-              'Get-WmiObject Win32_DiskDrive | select Caption,Size,Status,PNPDeviceId,BytesPerSector,TotalCylinders,TotalHeads,TotalSectors,TotalTracks,TracksPerCylinder,SectorsPerTrack,FirmwareRevision,SerialNumber,InterfaceType | fl'),
+          data: GeneralHelper.powerShell('Get-WmiObject Win32_DiskDrive | select Caption,Size,Status,PNPDeviceId,BytesPerSector,TotalCylinders,TotalHeads,TotalSectors,TotalTracks,TracksPerCylinder,SectorsPerTrack,FirmwareRevision,SerialNumber,InterfaceType | fl'),
           seprator: ':',
           isList: true,
         ),
         GeneralHelper.getValueAsMap(
-          data: GeneralHelper.powerShell(
-              'Get-PhysicalDisk | select BusType,MediaType,FriendlyName,Model,SerialNumber,Size | fl'),
+          data: GeneralHelper.powerShell('Get-PhysicalDisk | select BusType,MediaType,FriendlyName,Model,SerialNumber,Size | fl'),
           seprator: ':',
           isList: true,
         ),
@@ -370,8 +328,7 @@ class WindowsSystemInfo {
       ///MaxVoltage
       deviceInfo['memlayout'] = GeneralHelper.formatMemoryLayout(
         GeneralHelper.getValueAsMap(
-          data: GeneralHelper.powerShell(
-              'Get-WmiObject Win32_PhysicalMemory | select DataWidth,TotalWidth,Capacity,BankLabel,MemoryType,SMBIOSMemoryType,ConfiguredClockSpeed,FormFactor,Manufacturer,PartNumber,SerialNumber,ConfiguredVoltage,MinVoltage,MaxVoltage | fl'),
+          data: GeneralHelper.powerShell('Get-WmiObject Win32_PhysicalMemory | select DataWidth,TotalWidth,Capacity,BankLabel,MemoryType,SMBIOSMemoryType,ConfiguredClockSpeed,FormFactor,Manufacturer,PartNumber,SerialNumber,ConfiguredVoltage,MinVoltage,MaxVoltage | fl'),
           seprator: ':',
           isList: true,
         ),
@@ -403,30 +360,19 @@ class WindowsSystemInfo {
       ///positionY
       deviceInfo['graphics'] = GeneralHelper.formatGraphics(
         videoControllerData: GeneralHelper.getValueAsMap(
-          data: GeneralHelper.powerShell(
-              'Get-WmiObject win32_VideoController | fl *'),
+          data: GeneralHelper.powerShell('Get-WmiObject win32_VideoController | fl *'),
           seprator: ':',
           isList: true,
         ),
         dSectionData: GeneralHelper.getValueAsMap(
-          data: GeneralHelper.powerShell(
-              'Get-WmiObject win32_desktopmonitor | fl *'),
+          data: GeneralHelper.powerShell('Get-WmiObject win32_desktopmonitor | fl *'),
           seprator: ':',
           isList: true,
         ),
-        basicDisplayParamsData: GeneralHelper.getValueAsMap(
-            data: GeneralHelper.powerShell(
-                'Get-CimInstance -Namespace root\\WMI -ClassName WmiMonitorBasicDisplayParams | fl'),
-            seprator: ':',
-            isList: true),
-        monitorConnectionparameters: GeneralHelper.getValueAsMap(
-            data: GeneralHelper.powerShell(
-                'Get-CimInstance -Namespace root\\WMI -ClassName WmiMonitorConnectionParams | fl'),
-            seprator: ':',
-            isList: true),
+        basicDisplayParamsData: GeneralHelper.getValueAsMap(data: GeneralHelper.powerShell('Get-CimInstance -Namespace root\\WMI -ClassName WmiMonitorBasicDisplayParams | fl'), seprator: ':', isList: true),
+        monitorConnectionparameters: GeneralHelper.getValueAsMap(data: GeneralHelper.powerShell('Get-CimInstance -Namespace root\\WMI -ClassName WmiMonitorConnectionParams | fl'), seprator: ':', isList: true),
         formsDataAllScreens: GeneralHelper.getValueAsMap(
-          data: GeneralHelper.powerShell(
-              'Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Screen]::AllScreens'),
+          data: GeneralHelper.powerShell('Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Screen]::AllScreens'),
           seprator: ':',
           isList: true,
         ),
